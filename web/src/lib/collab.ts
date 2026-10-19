@@ -53,6 +53,9 @@ export function useCreativeConnection(creativeId: string, user: { id: string; na
   const [pending, setPending] = useState(false) // local changes not yet confirmed as stored
   const [failed, setFailed] = useState(false)
   const [slow, setSlow] = useState(false)
+  // The browser's own network signal. Closing a socket needs a handshake that can't happen offline,
+  // so the indicator must not wait for the socket to report the disconnect.
+  const [netOffline, setNetOffline] = useState(() => typeof navigator !== 'undefined' && navigator.onLine === false)
   const [presence, setPresence] = useState<PresenceUser[]>([])
   const listeners = useRef(new Set<NotifyListener>())
 
@@ -133,8 +136,14 @@ export function useCreativeConnection(creativeId: string, user: { id: string; na
     // React to the browser's own network signal immediately (otherwise a dead socket is only noticed
     // after the provider's message timeout). Local edits stay in the document and sync on reconnect.
     const socket = provider.configuration.websocketProvider
-    const goOffline = () => socket.disconnect()
-    const goOnline = () => void socket.connect()
+    const goOffline = () => {
+      setNetOffline(true)
+      socket.disconnect()
+    }
+    const goOnline = () => {
+      setNetOffline(false)
+      void socket.connect()
+    }
     window.addEventListener('offline', goOffline)
     window.addEventListener('online', goOnline)
 
@@ -151,6 +160,7 @@ export function useCreativeConnection(creativeId: string, user: { id: string; na
 
   let saveState: SaveState
   if (denied) saveState = 'denied'
+  else if (netOffline) saveState = pending ? 'offline_unsaved' : 'offline'
   else if (status !== 'connected') saveState = !synced && status === 'connecting' ? 'connecting' : pending ? 'offline_unsaved' : 'offline'
   else if (failed) saveState = 'failed'
   else if (pending) saveState = slow ? 'slow' : 'saving'
