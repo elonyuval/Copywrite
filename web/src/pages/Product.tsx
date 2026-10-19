@@ -20,31 +20,65 @@ const DOSSIER_HINTS: Record<string, string> = {
   materials: 'כל דבר נוסף שכדאי לדעת.',
 }
 
+type Fields = { name: string; description: string; dossier: Dossier }
+const fieldsOf = (p: any): Fields => ({ name: p.name, description: p.description, dossier: { ...(p.dossier as Dossier) } })
+const dv = (f: Fields, k: string) => (f.dossier as any)[k] ?? ''
+
 function ProductDetails({ product, onSaved }: { product: any; onSaved: (p: any) => void }) {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState({ name: product.name, description: product.description, dossier: { ...(product.dossier as Dossier) } })
+  const [draft, setDraft] = useState<Fields>(() => fieldsOf(product))
+  // What the draft was based on — only fields that differ from it are sent, so a save never
+  // overwrites a partner's change in a field we didn't touch.
+  const [base, setBase] = useState<Fields>(() => fieldsOf(product))
   const [busy, setBusy] = useState(false)
   const [conflictMsg, setConflictMsg] = useState<string | null>(null)
+  const [bothChanged, setBothChanged] = useState<string[]>([])
   const toast = useToast()
 
   const start = () => {
-    setDraft({ name: product.name, description: product.description, dossier: { ...(product.dossier as Dossier) } })
+    setDraft(fieldsOf(product))
+    setBase(fieldsOf(product))
     setConflictMsg(null)
+    setBothChanged([])
     setEditing(true)
   }
   const save = async () => {
     setBusy(true)
     try {
+      const body: Record<string, unknown> = { revision: product.revision }
+      if (draft.name !== base.name) body.name = draft.name
+      if (draft.description !== base.description) body.description = draft.description
       const changed: Dossier = {}
-      for (const f of DOSSIER_FIELDS) if ((draft.dossier[f.key] ?? '') !== (product.dossier?.[f.key] ?? '')) changed[f.key] = draft.dossier[f.key] ?? ''
-      const p = await api.patch(`/products/${product.id}`, { revision: product.revision, name: draft.name, description: draft.description, dossier: changed })
+      for (const f of DOSSIER_FIELDS) if (dv(draft, f.key) !== dv(base, f.key)) changed[f.key] = dv(draft, f.key)
+      body.dossier = changed
+      const p = await api.patch(`/products/${product.id}`, body)
       onSaved(p)
       setEditing(false)
+      setConflictMsg(null)
+      setBothChanged([])
       toast.show('success', 'תיק המוצר נשמר')
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
-        // Someone else saved meanwhile: load their version and keep our draft visible for merging.
+        // Someone else saved meanwhile. Keep every field we edited exactly as typed; take their
+        // version only for fields we did not touch; flag fields both of us changed.
+        const current = fieldsOf(e.data.current)
+        const merged: Fields = {
+          name: draft.name !== base.name ? draft.name : current.name,
+          description: draft.description !== base.description ? draft.description : current.description,
+          dossier: {},
+        }
+        const both: string[] = []
+        if (draft.name !== base.name && current.name !== base.name && current.name !== draft.name) both.push('name')
+        if (draft.description !== base.description && current.description !== base.description && current.description !== draft.description) both.push('description')
+        for (const f of DOSSIER_FIELDS) {
+          const mine = dv(draft, f.key) !== dv(base, f.key)
+          ;(merged.dossier as any)[f.key] = mine ? dv(draft, f.key) : dv(current, f.key)
+          if (mine && dv(current, f.key) !== dv(base, f.key) && dv(current, f.key) !== dv(draft, f.key)) both.push(f.key)
+        }
         onSaved(e.data.current)
+        setDraft(merged)
+        setBase(current)
+        setBothChanged(both)
         setConflictMsg(e.message)
       } else toast.show('error', `השמירה נכשלה: ${errorMessage(e)}`)
     } finally {
@@ -98,7 +132,11 @@ function ProductDetails({ product, onSaved }: { product: any; onSaved: (p: any) 
           </>
         )}
       </div>
-      {conflictMsg && <div className="alert alert-warn">{conflictMsg} הטיוטה שלכם נשארה בטופס.</div>}
+      {conflictMsg && (
+        <div className="alert alert-warn" role="alert" data-testid="dossier-conflict">
+          {conflictMsg} <strong>הטיוטה שלכם לא נמחקה</strong> — מה שערכתם נשאר בטופס. שדות שלא נגעתם בהם עודכנו לגרסה של השותף/ה{bothChanged.length ? ', ושדות ששניכם שיניתם מסומנים למטה' : ''}. ״שמירה״ נוספת תשמור רק את השדות שערכתם.
+        </div>
+      )}
       <div className="stack">
         {DOSSIER_FIELDS.map((f) => {
           const value = product.dossier?.[f.key] ?? ''
@@ -114,8 +152,10 @@ function ProductDetails({ product, onSaved }: { product: any; onSaved: (p: any) 
                     placeholder={DOSSIER_HINTS[f.key]}
                     aria-label={f.label}
                   />
-                  {conflictMsg && value !== (draft.dossier[f.key] ?? '') && (
-                    <div className="subtle">הגרסה השמורה כרגע: <span className="bidi" style={{ whiteSpace: 'pre-wrap' }}>{value || '(ריק)'}</span></div>
+                  {bothChanged.includes(f.key) && (
+                    <div className="alert alert-warn small" data-testid={`dossier-both-${f.key}`}>
+                      גם השותף/ה שינה/תה את השדה הזה. הגרסה השמורה כרגע: <span className="bidi" style={{ whiteSpace: 'pre-wrap' }}>{value || '(ריק)'}</span>
+                    </div>
                   )}
                 </>
               ) : value ? (

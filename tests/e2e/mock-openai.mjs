@@ -20,6 +20,7 @@ const replies = {
     suggested_angle: 'בוקר רגוע בלי מאמץ',
   }),
   script_review: () => ({ findings: [{ kind: 'note', target: 'none', text: 'יש חזרה בין הליד לגוף (בדיקה)', reason: 'חוסך זמן.', issue: 'repetition' }] }),
+  connection_check: () => ({ text: 'החיבור עובד (בדיקה מדומה).' }),
   short_version: () => ({ hooks: ['הוק מקוצר'], lead: 'ליד מקוצר', body: 'גוף מקוצר', cta: 'קנו עכשיו', shooting: '', notes: 'קיצרנו חזרות (בדיקה).' }),
 }
 
@@ -31,6 +32,15 @@ http
       if (req.method === 'GET' && req.url === '/__requests') {
         res.setHeader('Content-Type', 'application/json')
         return res.end(JSON.stringify(requests))
+      }
+      if (req.method === 'GET' && req.url.startsWith('/v1/models/')) {
+        const id = decodeURIComponent(req.url.slice('/v1/models/'.length))
+        res.setHeader('Content-Type', 'application/json')
+        if (id !== 'gpt-test') {
+          res.statusCode = 404
+          return res.end(JSON.stringify({ error: { message: 'model not found', type: 'invalid_request_error', code: 'model_not_found' } }))
+        }
+        return res.end(JSON.stringify({ id, object: 'model', created: 0, owned_by: 'test' }))
       }
       if (req.method === 'POST' && req.url === '/v1/responses') {
         const json = JSON.parse(body)

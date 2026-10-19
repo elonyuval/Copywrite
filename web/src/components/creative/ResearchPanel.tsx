@@ -103,6 +103,9 @@ export function ResearchPanel({ conn, creative, onAngle, startWithChat }: { conn
       </div>
       {view === 'fields' ? (
         <div>
+          <div className="alert alert-warn small" style={{ marginBottom: 10 }} data-testid="research-overwrite-note">
+            שימו לב: כל פריט מחקר נשמר כשדה אחד. אם שניכם עורכים <strong>את אותו פריט</strong> באותו רגע — השינוי האחרון קובע ועלול לדרוס את השני. פריטים שונים לא מתנגשים, והתסריט עצמו ממוזג בלי דריסה.
+          </div>
           <div className="row-wrap subtle" style={{ marginBottom: 10 }}>
             {PROVENANCE.map((p) => (
               <span key={p} className={`prov prov-${p}`}>{PROVENANCE_LABELS[p]}</span>

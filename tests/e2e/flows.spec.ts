@@ -118,6 +118,36 @@ test('second user joins with an invite and sees the same workspace', async () =>
   expect(res.status()).toBe(400)
 })
 
+test('a blocked dossier save keeps the local draft and never overwrites untouched fields', async () => {
+  await pageA.goto(productUrl)
+  await pageB.goto(productUrl)
+  await pageA.getByRole('button', { name: 'עריכה', exact: true }).click()
+  await pageB.getByRole('button', { name: 'עריכה', exact: true }).click()
+  // B saves first: changes features (A won't touch it) and offer (A will also change it).
+  await pageB.getByLabel('מאפיינים').fill('30ml, ויטמין C 15%')
+  await pageB.getByLabel('הצעה מסחרית').fill('ההצעה של דני')
+  await pageB.getByRole('button', { name: 'שמירה', exact: true }).click()
+  await expect(pageB.getByText('תיק המוצר נשמר')).toBeVisible()
+  // A edits from the older version.
+  await pageA.getByLabel('הצעה מסחרית').fill('ההצעה של יעל')
+  await pageA.getByLabel('קהלים').fill('אמהות עובדות')
+  await pageA.getByRole('button', { name: 'שמירה', exact: true }).click()
+  await expect(pageA.getByTestId('dossier-conflict')).toContainText('הטיוטה שלכם לא נמחקה')
+  await expect(pageA.getByLabel('הצעה מסחרית')).toHaveValue('ההצעה של יעל')
+  await expect(pageA.getByLabel('קהלים')).toHaveValue('אמהות עובדות')
+  await expect(pageA.getByLabel('מאפיינים')).toHaveValue('30ml, ויטמין C 15%')
+  await expect(pageA.getByTestId('dossier-both-offer')).toContainText('ההצעה של דני')
+  await pageA.getByRole('button', { name: 'שמירה', exact: true }).click()
+  await expect(pageA.getByText('תיק המוצר נשמר')).toBeVisible()
+  const id = productUrl.split('/').pop()
+  const saved = await (await pageA.request.get(`/api/products/${id}`)).json()
+  expect(saved.product.dossier.offer).toBe('ההצעה של יעל')
+  expect(saved.product.dossier.audiences).toBe('אמהות עובדות')
+  expect(saved.product.dossier.features).toBe('30ml, ויטמין C 15%')
+  expect(saved.product.dossier.benefits).toContain('עור זוהר')
+  await pageB.goto('/')
+})
+
 test('simultaneous editing of the same field merges without losing text', async () => {
   await pageA.goto(creativeUrl)
   await pageB.goto(creativeUrl)
@@ -205,6 +235,7 @@ test('deleting a hook can be undone', async () => {
 
 test('research is saved in the right creative', async () => {
   await pageA.getByRole('tab', { name: 'חקר לקוח' }).click()
+  await expect(pageA.getByTestId('research-overwrite-note')).toContainText('עלול לדרוס')
   await pageA.getByRole('button', { name: 'הוספה לכאבים, פחדים ותסכולים' }).click()
   await pageA.keyboard.type('מתעוררים עייפים')
   await saved(pageA)
@@ -429,4 +460,71 @@ test('Hebrew UI handles English, numbers and links', async () => {
   await expect(pageA.locator('html')).toHaveAttribute('dir', 'rtl')
   await expect(editor(pageA, 'body')).toContainText('Vitamin C 15%')
   await pageA.screenshot({ path: 'test-results/creative-screen.png', fullPage: false })
+})
+
+test('AI connection check reports model availability', async () => {
+  await pageA.goto('/settings')
+  await pageA.getByRole('button', { name: 'בדיקת חיבור אמיתית' }).click()
+  await expect(pageA.getByTestId('ai-check')).toContainText('gpt-test')
+  await expect(pageA.getByTestId('ai-check')).toContainText('החיבור עובד')
+})
+
+test('backup + restore round trip reproduces the data and files', async () => {
+  test.setTimeout(120_000)
+  await pageA.goto('/settings')
+  await pageA.getByRole('button', { name: 'גיבוי מלא כולל קבצים' }).click()
+  await expect(pageA.getByTestId('backup').first()).toContainText('מלא')
+  // Non-owners can't list or download backups.
+  expect((await pageB.request.get('/api/backups')).status()).toBe(403)
+  const href = await pageA.getByTestId('backup').first().getByRole('link', { name: 'הורדה' }).getAttribute('href')
+  const res = await pageA.request.get(href!)
+  expect(res.status()).toBe(200)
+  const { mkdtempSync, writeFileSync, readdirSync: rd } = await import('node:fs')
+  const os = await import('node:os')
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'cw-rt-'))
+  const file = path.join(dir, 'backup.tar.gz')
+  writeFileSync(file, await res.body())
+
+  const restoreUrl = (process.env.TEST_DATABASE_URL ?? 'postgres://copywrite:copywrite@localhost:5432/copywrite_test').replace(/\/[^/]+$/, '/copywrite_restore')
+  const reset = new pg.Client({ connectionString: restoreUrl })
+  await reset.connect()
+  await reset.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;')
+  await reset.end()
+  const { execFileSync } = await import('node:child_process')
+  const uploads = path.join(dir, 'uploads')
+  execFileSync('node', ['dist/restore.js', file, '--files'], {
+    env: { ...process.env, DATABASE_URL: restoreUrl, SESSION_SECRET: 'x', UPLOAD_DIR: uploads },
+    stdio: 'pipe',
+  })
+  const src = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL ?? 'postgres://copywrite:copywrite@localhost:5432/copywrite_test' })
+  const dst = new pg.Client({ connectionString: restoreUrl })
+  await src.connect()
+  await dst.connect()
+  for (const t of ['brands', 'products', 'creatives', 'creative_docs', 'creative_versions', 'comments', 'assets', 'approvals', 'ai_messages', 'activity']) {
+    const a = (await src.query(`SELECT count(*)::int n FROM ${t}`)).rows[0].n
+    const b = (await dst.query(`SELECT count(*)::int n FROM ${t}`)).rows[0].n
+    // The 'backup.created' activity row is written after the archive, so the source has one more.
+    expect(b, t).toBe(t === 'activity' ? a - 1 : a)
+  }
+  const docA = (await src.query('SELECT creative_id, state FROM creative_docs ORDER BY creative_id')).rows
+  const docB = (await dst.query('SELECT creative_id, state FROM creative_docs ORDER BY creative_id')).rows
+  expect(docB.map((r) => r.state.toString('base64'))).toEqual(docA.map((r) => r.state.toString('base64')))
+  await src.end()
+  await dst.end()
+  // The uploaded file came back too.
+  const ws = rd(uploads)[0]
+  expect(rd(path.join(uploads, ws)).length).toBeGreaterThan(0)
+})
+
+test('owner can remove a member, who immediately loses access', async () => {
+  await pageA.goto('/settings')
+  pageA.once('dialog', (d) => d.accept())
+  await pageA.getByRole('button', { name: 'הסרת גישה' }).click()
+  await expect(pageA.getByText('הגישה הוסרה')).toBeVisible()
+  expect((await pageB.request.get('/api/home')).status()).toBe(401)
+  // Open registration is not possible without a valid invite.
+  const r = await pageB.request.post('/api/auth/register', { headers: { Origin: 'http://localhost:3100' }, data: { name: 'x', email: 'new@example.com', password: '12345678', inviteCode: 'guess-guess' } })
+  expect(r.status()).toBe(400)
+  const setup = await pageB.request.post('/api/auth/setup', { headers: { Origin: 'http://localhost:3100' }, data: { name: 'x', email: 'n2@example.com', password: '12345678', workspaceName: 'w' } })
+  expect(setup.status()).toBe(409)
 })

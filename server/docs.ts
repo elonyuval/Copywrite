@@ -123,3 +123,8 @@ export async function storeDoc(creativeId: string, doc: Y.Doc, userId: string | 
     if (old && last?.content_hash !== hash) await saveVersion(creativeId, doc, 'auto', userId)
   }
 }
+
+/** Drops all live collaboration connections (clients reconnect automatically; used after removing a member). */
+export function closeAllConnections() {
+  hocuspocus?.closeConnections()
+}

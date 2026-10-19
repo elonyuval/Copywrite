@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { ZodError } from 'zod'
 import { originAllowed, requireAuth } from './auth'
 import { HttpError } from './errors'
+import { adminRouter } from './routes/admin'
 import { aiRouter } from './routes/ai'
 import { authRouter } from './routes/auth'
 import { catalogRouter } from './routes/catalog'
@@ -22,6 +23,8 @@ export function createApp() {
     res.setHeader('X-Frame-Options', 'DENY')
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'same-origin')
+    // Private workspace: keep it out of search engines.
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow')
     next()
   })
 
@@ -39,7 +42,7 @@ export function createApp() {
     next()
   })
   app.use('/api', authRouter)
-  app.use('/api', requireAuth, catalogRouter, productionRouter, aiRouter, preferencesRouter, tokensRouter)
+  app.use('/api', requireAuth, catalogRouter, productionRouter, aiRouter, preferencesRouter, tokensRouter, adminRouter)
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'נתיב לא קיים', 'not_found')))
 
   // Built frontend (production). In development Vite serves it and proxies /api and /collab.

@@ -1,0 +1,47 @@
+# Render Blueprint: one web service (API + realtime collaboration + frontend), a persistent disk for
+# uploaded files and nightly backups, and a managed Postgres database. See DEPLOY.md.
+services:
+  - type: web
+    name: copywrite
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # always-on, required for websockets + a persistent disk
+    region: frankfurt        # closest Render region to Israel
+    branch: claude/creative-workspace-v1
+    healthCheckPath: /api/health
+    numInstances: 1          # a service with a disk runs as a single instance
+    disk:
+      name: data
+      mountPath: /data       # uploads in /data/uploads, nightly DB backups in /data/backups
+      sizeGB: 5
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: copywrite-db
+          property: connectionString   # internal connection, never exposed publicly
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SETUP_TOKEN
+        generateValue: true            # needed once, to create the first (owner) account
+      - key: OPENAI_API_KEY
+        sync: false                    # entered by you in the Render dashboard, never in code
+      - key: OPENAI_MODEL
+        value: gpt-5.5
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: BACKUP_DIR
+        value: /data/backups
+      - key: BACKUP_KEEP
+        value: "14"
+      - key: MAX_UPLOAD_MB
+        value: "500"
+
+databases:
+  - name: copywrite-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: copywrite
+    user: copywrite
+    ipAllowList: []                    # no public access: only the web service can connect

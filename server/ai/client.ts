@@ -1,7 +1,7 @@
 // OpenAI access. The API key never leaves the server.
 import OpenAI from 'openai'
 import { zodTextFormat } from 'openai/helpers/zod'
-import type { z } from 'zod'
+import { z } from 'zod'
 import { config } from '../config'
 import { HttpError } from '../errors'
 
@@ -38,6 +38,27 @@ export async function callStructured<S extends z.ZodType>(args: AiCallInput<S>):
   } catch (e) {
     throw mapAiError(e)
   }
+}
+
+/**
+ * Verifies the configured model is available to this API key (models.retrieve) and that a real,
+ * tiny structured call works and answers in Hebrew. Costs a few tokens.
+ */
+export async function checkAi() {
+  const openai = getClient()
+  const started = Date.now()
+  try {
+    await openai.models.retrieve(config.openaiModel)
+  } catch (e) {
+    throw mapAiError(e)
+  }
+  const out = await callStructured({
+    instructions: 'Answer in Hebrew only.',
+    input: [{ role: 'user', content: 'כתבו משפט קצר אחד בעברית שמאשר שהחיבור עובד.' }],
+    schema: z.object({ text: z.string() }),
+    schemaName: 'connection_check',
+  })
+  return { model: config.openaiModel, ms: Date.now() - started, sample: out.text, hebrew: /[\u0590-\u05FF]/.test(out.text) }
 }
 
 function mapAiError(e: unknown): Error {
