@@ -13,8 +13,13 @@ export const config = {
   databaseUrl: required('DATABASE_URL'),
   sessionSecret: required('SESSION_SECRET'),
   setupToken: env.SETUP_TOKEN ?? '',
-  // Render sets RENDER_EXTERNAL_URL automatically.
-  publicUrl: env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || '',
+  // Render sets RENDER_EXTERNAL_URL; GitHub Codespaces exposes the forwarded address pieces.
+  publicUrl:
+    env.PUBLIC_URL ||
+    env.RENDER_EXTERNAL_URL ||
+    (env.CODESPACE_NAME && env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
+      ? `https://${env.CODESPACE_NAME}-${env.PORT ?? 3000}.${env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
+      : ''),
   openaiApiKey: env.OPENAI_API_KEY ?? '',
   openaiModel: env.OPENAI_MODEL || 'gpt-5.5',
   /** Optional: OpenAI-compatible endpoint (proxy / gateway). Leave empty for api.openai.com. */

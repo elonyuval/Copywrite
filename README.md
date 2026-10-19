@@ -48,6 +48,8 @@ npm run build && npm start        # הכול על http://localhost:3000
 
 ## פריסה (לשני מחשבים נפרדים)
 
+> **ניסיון חינמי בלי אחסון: [CODESPACES.md](CODESPACES.md) (GitHub Codespaces).**
+>
 > **מדריך מלא ל־Render, כולל עלויות, מפתח OpenAI, גיבויים ושחזור ובדיקה משני מחשבים: [DEPLOY.md](DEPLOY.md).**
 > ‏`render.yaml` מגדיר את כל התשתית (Blueprint).
 

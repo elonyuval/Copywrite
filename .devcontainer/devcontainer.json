@@ -1,0 +1,21 @@
+{
+  "name": "Copywrite",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "shutdownAction": "stopCompose",
+  "hostRequirements": { "cpus": 2 },
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Copywrite", "onAutoForward": "openBrowser" }
+  },
+  "secrets": {
+    "OPENAI_API_KEY": {
+      "description": "מפתח API של OpenAI (לא חובה). בלעדיו הכול עובד חוץ מ-AI. נשמר בסודות של GitHub ולא בקוד.",
+      "documentationUrl": "https://platform.openai.com/api-keys"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "bash .devcontainer/start.sh",
+  "postAttachCommand": "bash .devcontainer/welcome.sh"
+}
