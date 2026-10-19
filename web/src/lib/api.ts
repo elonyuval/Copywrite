@@ -41,7 +41,8 @@ export const api = {
   upload: <T = any>(url: string, form: FormData) => request<T>('POST', url, form),
 }
 
-export const fileUrl = (id: string) => `/api/files/${id}`
+// The in-browser demo serves files from memory and registers a resolver here.
+export const fileUrl = (id: string): string => (globalThis as any).__cwFileUrl?.(id) ?? `/api/files/${id}`
 
 export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) return e.message

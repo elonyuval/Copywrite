@@ -325,6 +325,7 @@ label.field > span.hint { font-weight: 400; color: var(--text-3); }
 }
 @media (max-width: 760px) {
   .sidebar { position: fixed; inset-block: 0; inset-inline-start: 0; z-index: 800; box-shadow: var(--shadow-lg); transform: translateX(100%); transition: transform 0.18s; width: 270px; }
+  .sidebar:not(.mobile-open) { box-shadow: none; }
   .sidebar.mobile-open { transform: none; }
   .sidebar.collapsed { width: 270px; }
   .sidebar.collapsed .nav-label, .sidebar.collapsed .nav-section, .sidebar.collapsed .ws-name, .sidebar.collapsed .sidebar-foot .who { display: initial; }
@@ -336,3 +337,8 @@ label.field > span.hint { font-weight: 400; color: var(--text-3); }
   .hide-mobile { display: none !important; }
   .ProseMirror { font-size: 16px; }
 }
+
+/* ---------- browser demo badge (demo build only) ---------- */
+.demo-badge { position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); left: calc(8px + env(safe-area-inset-left, 0px)); z-index: 950; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: min(340px, calc(100vw - 16px)); }
+.demo-badge button { border: none; border-radius: 999px; background: #a21caf; color: #fff; font: inherit; font-size: 13px; font-weight: 700; padding: 4px 12px; cursor: pointer; box-shadow: var(--shadow-lg); }
+.demo-badge p { margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; font-size: 13px; box-shadow: var(--shadow-lg); }
